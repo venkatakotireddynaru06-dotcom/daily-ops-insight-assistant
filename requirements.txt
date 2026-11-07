@@ -1,0 +1,10 @@
+pandas
+numpy
+scikit-learn
+streamlit
+plotly
+openpyxl
+jpholiday
+anthropic
+pytest
+matplotlib
