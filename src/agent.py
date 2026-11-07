@@ -91,6 +91,25 @@ class OpsAgent:
             msgs.append(dict(role="user", content=results))
         return "Sorry, I could not finish the analysis."
 
+    @staticmethod
+    def _resolve_date(ql: str, end: pd.Timestamp):
+        """Turn 'last saturday', 'yesterday', '土曜' or YYYY-MM-DD into a date string (relative to the data end)."""
+        m = re.search(r"\d{4}-\d{2}-\d{2}", ql)
+        if m:
+            return m.group(0)
+        if re.search(r"yesterday|昨日", ql):
+            return str((end - pd.Timedelta(days=1)).date())
+        if re.search(r"\btoday\b|今日", ql):
+            return str(end.date())
+        en = {"monday": 0, "tuesday": 1, "wednesday": 2, "thursday": 3, "friday": 4, "saturday": 5, "sunday": 6}
+        wd = next((i for n, i in en.items() if re.search(r"\b" + n + r"\b", ql)), None)
+        j = re.search(r"([月火水木金土日])曜", ql)
+        if wd is None and j:
+            wd = "月火水木金土日".index(j.group(1))
+        if wd is None:
+            return None
+        return str((end - pd.Timedelta(days=(end.dayofweek - wd) % 7)).date())
+
     # ---- offline fallback -----------------------------------------------------------
     def _offline(self, q: str) -> str:
         ja = bool(re.search(r"[\u3040-\u30ff\u4e00-\u9fff]", q))
@@ -100,10 +119,9 @@ class OpsAgent:
         metric = next((m for m, ws in kw.items() if any(re.search(r"\b" + w + r"\b" if w.isascii() else w, ql) for w in ws)), "park_visitors")
         label = METRICS[metric]["label_ja" if ja else "label_en"]
         end = self.an.df.date.max()
-        m = re.search(r"\d{4}-\d{2}-\d{2}", q)
+        date = self._resolve_date(ql, end)
 
-        if m or re.search(r"\bwhy\b|なぜ|なんで|busier|\bbusy\b|多かった|少なかった", ql):
-            date = m.group(0) if m else None
+        if date or re.search(r"\bwhy\b|なぜ|なんで|busier|\bbusy\b|多かった|少なかった", ql):
             if not date:
                 a = self.an.anomalies(metric, start=end - pd.Timedelta(days=90))
                 date = str((a.iloc[-1].date if len(a) else end).date())
